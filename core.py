@@ -1,19 +1,20 @@
-from .one import PureALFPath, spec
+from __future__ import annotations
+
 from datetime import date as Date
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Callable, Iterator
-RAW_DATA_PATH = Path("//10.233.25.135/FANCiNAS1/Data") #READ ONLY
-PROCESSED_DATA_PATH = Path("//10.233.25.135/FANCiNAS1/Processed") #READ ONLY
-ALF_ROOT = Path("D:/alftoolbox")
+
+from one.alf import spec
+from one.alf.path import PureALFPath
 
 
 @dataclass
 class IBLDataset:
-    IBLobject: str
+    ibl_object: str
     attribute: str
     extension: str
-    export_fn: Callable[[dict[str, Path], Path], Path]
+    export_fn: Callable[[object, Path], Path]
     namespace: str | None = None
     timescale: str | None = None
     docstring: str | None = None
@@ -22,7 +23,7 @@ class IBLDataset:
 
     def __post_init__(self) -> None:
         filename = spec.to_alf(
-            self.IBLobject, self.attribute, self.extension,
+            self.ibl_object, self.attribute, self.extension,
             namespace=self.namespace, timescale=self.timescale, extra=self.extra,
         )
         self._path = PureALFPath(filename)
@@ -33,8 +34,9 @@ class IBLDataset:
     def filename(self) -> str:
         return self._path.name
 
-    def export(self,source_paths:list[Path], output_path: Path) -> Path:
-        return self.export_fn(source_paths, output_path)
+    def export(self, exporter: object, output_path: Path) -> Path:
+        """Export this dataset with its owning exporter to ``output_path``."""
+        return self.export_fn(exporter, output_path)
 
 
 @dataclass
@@ -60,9 +62,33 @@ class Collection:
         return [path.as_posix() for path, _ in self.walk()]
 
 
+class Exporters(list[object]):
+    """Session exporters, addressable by position or exporter class name."""
 
-class OneSession:
-    def __init__(self, modality: str, subject: str, date: str, session_number: int):
+    def __getattr__(self, exporter_name: str) -> object:
+        """Return the exporter whose class name is ``exporter_name``."""
+        for exporter in self:
+            if type(exporter).__name__ == exporter_name:
+                return exporter
+        raise AttributeError(
+            f"No {exporter_name!r} exporter is available for this session"
+        )
+
+
+class OneSessionConverter:
+    """Convert one experimental session into an IBL-compatible local session."""
+
+    def __init__(
+        self,
+        modality: str,
+        subject: str,
+        date: str,
+        session_number: int,
+        *,
+        raw_data_root: str | Path,
+        processed_data_root: str | Path,
+        converter_root: str | Path,
+    ):
         for label, value in (("modality", modality), ("subject", subject)):
             if not value or value in (".", "..") or any(c in value for c in "/\\:"):
                 raise ValueError(f"{label} must be one directory name: {value!r}")
@@ -83,19 +109,97 @@ class OneSession:
         self.date = date
         self.session_number = session_number
 
-        self.relative_path = Path(modality) / subject / date / str(session_number)
-        self.raw_path = RAW_DATA_PATH / self.relative_path
-        self.processed_path = PROCESSED_DATA_PATH / self.relative_path
+        self.raw_data_root = Path(raw_data_root)
+        self.processed_data_root = Path(processed_data_root)
+        self.converter_root = Path(converter_root)
+        # ONE indexes sessions below the modality directory.  Keep this path
+        # explicit so callers do not need to reconstruct ONE's cache root.
+        self.one_root = self.converter_root / self.modality
+
+        self.relative_path = Path(modality) / subject / date / f"{session_number:03d}"
+        source_relative_path = Path(modality) / subject / date.replace("-", "") / str(session_number)
+        self.raw_path = self.raw_data_root / source_relative_path
+        self.session_time_zero = float((self.raw_path / "timestamped_digital.csv").open().readline().split(",", 1)[0])
 
         # This is the session output root, containing alf/ and raw_passive_data/.
-        self.alf_path = ALF_ROOT / self.relative_path
+        self.session_path = self.converter_root / self.relative_path
+
+        self.exporters = self.get_exporters()
+
+    def get_exporters(self) -> Exporters:
+        """Return the stable exporter instances available for this session."""
+        if hasattr(self, "exporters"):
+            return self.exporters
 
         # Import lazily to avoid a circular import: exporters use the Collection
         # and IBLDataset types defined above in this module.
         from .exporters import REGISTERED_EXPORTERS
 
+        # Instantiate each registered exporter, then retain only exporters
+        # whose get_collections() finds a valid acquisition for this session.
+        # The retained instances remain stable so users can adjust settings.
+        exporters = Exporters()
+        for exporter_class in REGISTERED_EXPORTERS:
+            exporter = exporter_class(self)
+            if exporter.get_collections():
+                print(repr(exporter))
+                exporters.append(exporter)
+        return exporters
+
+    def export(self) -> list[Path]:
+        """Export this session's registered datasets and return their paths.
+
+        Export functions receive their owning exporter so they can use its
+        session and any user-adjusted exporter settings.
+        ``Collection.walk`` supplies paths relative to the session output
+        root, including the collection directory and ALF filename.
+        """
+        exported_paths: list[Path] = []
+
+        exporter_collections = [
+            (exporter, exporter.get_collections()) for exporter in self.exporters
+        ]
         self.collections = [
             collection
-            for exporter in REGISTERED_EXPORTERS
-            for collection in exporter.get_collections(self)
+            for exporter, collections in exporter_collections
+            for collection in collections
         ]
+
+        for exporter, collections in exporter_collections:
+            for collection in collections:
+                for relative_output_path, dataset in collection.walk():
+                    output_path = self.session_path / relative_output_path
+                    output_path.parent.mkdir(parents=True, exist_ok=True)
+                    exported_paths.append(dataset.export(exporter, output_path))
+
+        return exported_paths
+
+
+
+def explain_dataset(dataset: str | Path) -> None:
+    """Print documentation for an ALF dataset filename or relative path."""
+    from .exporters import REGISTERED_EXPORTERS
+
+    filename = str(dataset).strip().replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
+    matches = [
+        definition
+        for exporter_class in REGISTERED_EXPORTERS
+        for definition in exporter_class.datasets.values()
+        if definition.filename == filename
+    ]
+
+    if not matches:
+        raise KeyError(f"Unknown dataset {filename!r}")
+
+    docstrings = {definition.docstring for definition in matches}
+    if len(docstrings) > 1:
+        exporter_names = ", ".join(
+            exporter_class.__name__
+            for exporter_class in REGISTERED_EXPORTERS
+            if any(definition.filename == filename for definition in exporter_class.datasets.values())
+        )
+        raise ValueError(
+            f"Ambiguous dataset {filename!r}: conflicting documentation in {exporter_names}"
+        )
+
+    print(matches[0].docstring or "No documentation available.")
