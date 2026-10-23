@@ -87,7 +87,7 @@ class OneSessionConverter:
         *,
         raw_data_root: str | Path,
         processed_data_root: str | Path,
-        converter_root: str | Path,
+        one_root: str | Path,
     ):
         for label, value in (("modality", modality), ("subject", subject)):
             if not value or value in (".", "..") or any(c in value for c in "/\\:"):
@@ -111,18 +111,18 @@ class OneSessionConverter:
 
         self.raw_data_root = Path(raw_data_root)
         self.processed_data_root = Path(processed_data_root)
-        self.converter_root = Path(converter_root)
-        # ONE indexes sessions below the modality directory.  Keep this path
-        # explicit so callers do not need to reconstruct ONE's cache root.
-        self.one_root = self.converter_root / self.modality
+        # ONE's cache root: converted sessions are written directly below it as
+        # subject/date/number, and ONE indexes them from here.  The modality
+        # only appears in the raw and processed source paths.
+        self.one_root = Path(one_root)
 
-        self.relative_path = Path(modality) / subject / date / f"{session_number:03d}"
+        self.relative_path = Path(subject) / date / f"{session_number:03d}"
         source_relative_path = Path(modality) / subject / date.replace("-", "") / str(session_number)
         self.raw_path = self.raw_data_root / source_relative_path
         self.session_time_zero = float((self.raw_path / "timestamped_digital.csv").open().readline().split(",", 1)[0])
 
         # This is the session output root, containing alf/ and raw_passive_data/.
-        self.session_path = self.converter_root / self.relative_path
+        self.session_path = self.one_root / self.relative_path
 
         self.exporters = self.get_exporters()
 

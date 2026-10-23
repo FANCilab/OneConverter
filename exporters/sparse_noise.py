@@ -23,13 +23,14 @@ RF_MAP_STIM_RAW_DOC = """Raw receptive-field mapping stimulus matrix.
 
 Dataset: _iblrig_RFMapStim.raw.bin
 Units: color
-Type: uint8
-Dimensions: [nFrames, nx, ny]
+Type: int8
+Dimensions: [nFrames, nCols, nRows]
 Format: bin
 
-The public IBL dataset-types document specifies nx == ny == 15. Legacy source
-sessions may instead use 10 x 30 or 7 x 27 layouts; the source bytes are
-preserved in the exported dataset.
+The source bytes are preserved unchanged. They are int8 in C order with shape
+[nFrames, nCols, nRows] (frame-major); the default grid is 7 rows x 27 columns.
+Values are -128 for gray, -1 for black and 0 for white. The public IBL
+dataset-types document specifies a 15 x 15 uint8 grid instead.
 """
 
 SPARSE_NOISE_XY_DOC = """Screen x/y coordinates of each non-gray sparse-noise stimulus square.
@@ -73,25 +74,60 @@ def export_rf_map_stim_raw(exporter: SparseNoiseExporter, output_path: Path) -> 
     return output_path
 
 
-def export_sparse_noise_xy(exporter: SparseNoiseExporter, output_path: Path) -> Path:
-    """Write `_ibl_sparseNoise.xy.npy` with one x/y location per event."""
+def load_sparse_noise_movie(exporter: SparseNoiseExporter) -> tuple[np.ndarray, np.ndarray]:
+    """Return the decoded `[frame, row, col]` movie and its absolute frame times.
+
+    `SparseNoise_Log.bin` is frame-major int8 in C order with shape
+    `(n_frames, n_columns, n_rows)`. Byte values are decoded as -128 -> 0
+    (gray), -1 -> -1 (black) and 0 -> +1 (white).
+    """
     converter = exporter.session_converter
+    frame_times = np.ravel(
+        np.loadtxt(
+            converter.raw_path / "times_grid.csv",
+            delimiter=",",
+            ndmin=1,
+        )
+    ).astype(np.float64, copy=False)
+    # One frame time per stimulus frame; the times must be usable as a clock.
+    if not np.all(np.isfinite(frame_times)):
+        raise ValueError("times_grid.csv contains non-finite frame times")
+    if not np.all(np.diff(frame_times) > 0):
+        raise ValueError("times_grid.csv frame times are not strictly increasing")
+    n_frames = frame_times.size
+
+    # The grid size is fixed by the exporter setting; no shape is inferred.
+    n_rows, n_columns = exporter.sparse_noise_shape
     raw = np.fromfile(converter.raw_path / "SparseNoise_Log.bin", dtype=np.int8)
-    shape = next(
-        (
-            (rows, columns)
-            for rows, columns in exporter.sparse_noise_shapes
-            if raw.size % (rows * columns) == 0
-        ),
-    )
-    n_rows, n_columns = shape
-    movie = np.moveaxis(raw.reshape(n_rows, n_columns, -1), 2, 0)
+    expected_size = n_frames * n_rows * n_columns
+    if raw.size != expected_size:
+        raise ValueError(
+            f"SparseNoise_Log.bin has {raw.size} bytes but times_grid.csv has "
+            f"{n_frames} frames; expected {n_frames} x {n_rows} x {n_columns} "
+            f"= {expected_size} bytes"
+        )
+    # Reorder the stored [frame, col, row] layout to [frame, row, col].
+    movie = raw.reshape(n_frames, n_columns, n_rows).transpose(0, 2, 1)
+    unexpected = np.setdiff1d(np.unique(movie), (-128, -1, 0))
+    if unexpected.size:
+        raise ValueError(
+            f"SparseNoise_Log.bin contains unexpected values {unexpected.tolist()}; "
+            "only -128, -1 and 0 are allowed"
+        )
     movie = np.select(
         (movie == -1, movie == 0),
         (-1, 1),
         default=0,
     )
+    return movie, frame_times
 
+
+def export_sparse_noise_xy(exporter: SparseNoiseExporter, output_path: Path) -> Path:
+    """Write `_ibl_sparseNoise.xy.npy` with one x/y location per event."""
+    movie, _ = load_sparse_noise_movie(exporter)
+    _, n_rows, n_columns = movie.shape
+
+    # Row 0 is the bottom of the screen and column 0 is its left edge.
     left, right, bottom, top = exporter.stimulus_edges_deg
     x_edges = np.linspace(left, right, n_columns + 1)
     y_edges = np.linspace(bottom, top, n_rows + 1)
@@ -108,29 +144,9 @@ def export_sparse_noise_xy(exporter: SparseNoiseExporter, output_path: Path) -> 
 def export_sparse_noise_times(exporter: SparseNoiseExporter, output_path: Path) -> Path:
     """Write `_ibl_sparseNoise.times.npy` with one session-relative time per event."""
     converter = exporter.session_converter
-    raw = np.fromfile(converter.raw_path / "SparseNoise_Log.bin", dtype=np.int8)
-    shape = next(
-        (
-            (rows, columns)
-            for rows, columns in exporter.sparse_noise_shapes
-            if raw.size % (rows * columns) == 0
-        ),
-    )
-    n_rows, n_columns = shape
-    movie = np.moveaxis(raw.reshape(n_rows, n_columns, -1), 2, 0)
-    movie = np.select(
-        (movie == -1, movie == 0),
-        (-1, 1),
-        default=0,
-    )
-    frame_times = np.ravel(
-        np.loadtxt(
-            converter.raw_path / "times_grid.csv",
-            delimiter=",",
-            ndmin=1,
-        )
-    ).astype(np.float64, copy=False)
+    movie, frame_times = load_sparse_noise_movie(exporter)
 
+    # np.nonzero walks the movie in C order, matching the xy event order.
     frame_indices = np.nonzero(movie)[0]
     event_times = (frame_times - converter.session_time_zero)[frame_indices].astype(
         np.float64, copy=False
@@ -141,7 +157,7 @@ def export_sparse_noise_times(exporter: SparseNoiseExporter, output_path: Path) 
 
 class SparseNoiseExporter(Exporter):
     settings = {
-        "sparse_noise_shapes": ((15, 15), (10, 30), (7, 27)),
+        "sparse_noise_shape": (7, 27),
         "stimulus_edges_deg": (-135.0, 135.0, -40.0, 40.0),
     }
     datasets = {

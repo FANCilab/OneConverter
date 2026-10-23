@@ -38,7 +38,7 @@ def _discover_exporters() -> tuple[type[Exporter], ...]:
 
 REGISTERED_EXPORTERS = _discover_exporters()
 
-# Preserve direct imports such as ``from alf_toolbox.exporters import MpciExporter``.
+# Preserve direct imports such as ``from OneConverter.exporters import MpciExporter``.
 globals().update({exporter.__name__: exporter for exporter in REGISTERED_EXPORTERS})
 
 __all__ = [

@@ -1,6 +1,6 @@
 """Manual end-to-end export and ONE loading flow for NM023 2026-04-28."""
 
-from alf_toolbox import OneSessionConverter, explain_dataset
+from OneConverter import OneSessionConverter, explain_dataset
 from one.api import One, make_parquet_db
 
 
@@ -12,14 +12,14 @@ session = OneSessionConverter(
     1,
     raw_data_root="//10.233.25.135/FANCiNAS1/Data",
     processed_data_root="//10.233.25.135/FANCiNAS1/Processed",
-    converter_root="D:/alftoolbox",
+    one_root="D:/ONEdata",
 )
 
 # List available exporters and their current settings.
 print(session.exporters)
 
-# Reassign the default candidate grids to show how settings are changed.
-session.exporters.SparseNoiseExporter.sparse_noise_shapes = ((15, 15), (10, 30), (7, 27))
+# Reassign the default (rows, columns) grid to show how settings are changed.
+session.exporters.SparseNoiseExporter.sparse_noise_shape = (7, 27)
 
 # Export the sparse-noise, mPCI, and wheel datasets available for this session.
 session.export()
