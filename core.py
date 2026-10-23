@@ -146,14 +146,29 @@ class OneSessionConverter:
                 exporters.append(exporter)
         return exporters
 
-    def export(self) -> list[Path]:
+    def export(self, force_export: bool = False) -> list[Path]:
         """Export this session's registered datasets and return their paths.
 
         Export functions receive their owning exporter so they can use its
         session and any user-adjusted exporter settings.
         ``Collection.walk`` supplies paths relative to the session output
         root, including the collection directory and ALF filename.
+
+        If the session output directory already contains files, nothing is
+        written and an empty list is returned.  Pass ``force_export=True`` to
+        export again and overwrite the existing datasets.
         """
+        # A session counts as already exported when any file exists below its
+        # output root; individual datasets are not checked.
+        if not force_export and self.session_path.is_dir() and any(
+            path.is_file() for path in self.session_path.rglob("*")
+        ):
+            print(
+                f"{self.session_path} is already exported; "
+                "use export(force_export=True) to export again."
+            )
+            return []
+
         exported_paths: list[Path] = []
 
         exporter_collections = [

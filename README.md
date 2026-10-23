@@ -33,6 +33,9 @@ print(session.exporters)
 
 # Example: reassign an exporter's default setting before conversion.
 session.exporters.SparseNoiseExporter.sparse_noise_shape = (7, 27)
+
+# Skips the export if the session folder already holds files; pass
+# force_export=True to export again and overwrite them.
 session.export()
 
 # Refresh ONE's local index after writing the session.
@@ -121,7 +124,7 @@ classDiagram
 1. `OneSessionConverter` in [`core.py`](core.py) builds the source and output paths for one session and reads the session time zero from `timestamped_digital.csv`. It writes under `one_root / subject / YYYY-MM-DD / NNN`.
 2. [`exporters/__init__.py`](exporters/__init__.py) discovers concrete `Exporter` subclasses in the `exporters/` Python files. The converter creates each exporter and retains those whose `get_collections()` finds matching source data. `session.exporters` is an `Exporters` list; it also supports access by class name, for example `session.exporters.WheelExporter` when wheel data are present.
 3. Concrete exporter classes declare `settings` defaults and a class-level `datasets` map of `IBLDataset` definitions. The base `Exporter` copies the setting values onto each instance and stores its `session_converter` reference. `get_collections()` builds and returns `Collection` objects; the base exporter does not store them. A collection references selected dataset definitions and can have child collections, giving paths such as `alf/FOV_00`. An `IBLDataset` holds the filename parts, documentation, and a module-level export function.
-4. `session.export()` asks the retained exporters for their collections again, records those collections on the converter, walks their dataset definitions, creates output directories, and calls each dataset's export function. It returns the paths written. Exporter settings can be changed on the retained instance before this call.
+4. `session.export()` first checks the session output directory: if it already contains any file, it prints a message and returns an empty list without writing anything. `session.export(force_export=True)` skips this check. Otherwise it asks the retained exporters for their collections again, records those collections on the converter, walks their dataset definitions, creates output directories, and calls each dataset's export function. It returns the paths written. Exporter settings can be changed on the retained instance before this call.
 
 The current exporters are [`MpciExporter`](exporters/mpci.py) for Suite2p imaging results, [`SparseNoiseExporter`](exporters/sparse_noise.py) for receptive field mapping files, and [`WheelExporter`](exporters/wheel.py) for rotary encoder data. They create IBL named files in `alf/`, `alf/FOV_XX/`, or `raw_passive_data/` as appropriate. `explain_dataset` looks up the documentation stored in their dataset definitions.
 
