@@ -53,6 +53,17 @@ Type: float32
 Dimensions: [nFrames, nROIs]
 Format: npy"""
 
+MPCI_ROI_TYPES_DOC = """Numerical enumeration of ROI type for each ROI.
+
+Dataset: mpciROIs.mpciROITypes.npy
+Units: N/A
+Type: int16
+Dimensions: [nROIs]
+Format: npy
+
+Values are the Suite2p manual curation label (iscell[:, 0]): 0 = nonCell,
+1 = neuron."""
+
 MPCI_CELL_CLASSIFIER_DOC = """Floating-point cell classifier score for each ROI, ranging between 0 and 1.
 
 Dataset: mpciROIs.cellClassifier.npy
@@ -103,6 +114,29 @@ def _load_fov_iscell(exporter: MpciExporter, output_path: Path) -> np.ndarray:
         iscell = iscell[
             np.fromiter((entry["iplane"] == plane for entry in combined_stat), dtype=bool)
         ]
+
+        # The selected combined rows must cover exactly the ROIs traced in
+        # this plane's F.npy (shape [nROIs, nFrames]).
+        n_plane_rois = np.load(fov["path"] / "F.npy", mmap_mode="r").shape[0]
+        if iscell.shape[0] != n_plane_rois:
+            raise ValueError(
+                f"combined/stat.npy has {iscell.shape[0]} rows for plane {plane}, but "
+                f"{fov['path'] / 'F.npy'} has {n_plane_rois} ROIs"
+            )
+
+        # A plane-level iscell.npy holds the same classifier probabilities in
+        # plane ROI order, so a mismatch means the combined rows are misordered.
+        plane_iscell_path = fov["path"] / "iscell.npy"
+        if plane_iscell_path.is_file():
+            plane_iscell = np.load(plane_iscell_path)
+            if plane_iscell.shape[0] != iscell.shape[0] or not np.allclose(
+                plane_iscell[:, 1], iscell[:, 1], rtol=0, atol=1e-12
+            ):
+                raise ValueError(
+                    f"Classifier probabilities in {plane_iscell_path} do not match the "
+                    f"combined/iscell.npy rows selected for plane {plane}; the combined "
+                    "row order does not match the plane ROI order"
+                )
     return iscell
 
 
@@ -137,6 +171,12 @@ def export_mpci_roi_neuropil_activity_f(exporter: MpciExporter, output_path: Pat
 def export_mpci_roi_activity_deconvolved(exporter: MpciExporter, output_path: Path) -> Path:
     """Write Suite2p spks as frame-by-ROI deconvolved activity."""
     return _export_frame_trace(exporter, output_path, "spks.npy")
+
+
+def export_mpci_roi_types(exporter: MpciExporter, output_path: Path) -> Path:
+    """Write the Suite2p manual curation label (0 = nonCell, 1 = neuron) for each ROI."""
+    np.save(output_path, _load_fov_iscell(exporter, output_path)[:, 0].astype(np.int16))
+    return output_path
 
 
 def export_mpci_cell_classifier(exporter: MpciExporter, output_path: Path) -> Path:
@@ -237,6 +277,14 @@ class MpciExporter(Exporter):
             namespace=None,
             export_fn=export_mpci_roi_activity_deconvolved,
             docstring=MPCI_ROI_ACTIVITY_DECONVOLVED_DOC,
+        ),
+        "mpciROIs.mpciROITypes.npy": IBLDataset(
+            ibl_object="mpciROIs",
+            attribute="mpciROITypes",
+            extension="npy",
+            namespace=None,
+            export_fn=export_mpci_roi_types,
+            docstring=MPCI_ROI_TYPES_DOC,
         ),
         "mpciROIs.cellClassifier.npy": IBLDataset(
             ibl_object="mpciROIs",
@@ -542,6 +590,7 @@ class MpciExporter(Exporter):
                         self.datasets["mpci.ROIActivityF.npy"],
                         self.datasets["mpci.ROINeuropilActivityF.npy"],
                         self.datasets["mpci.ROIActivityDeconvolved.npy"],
+                        self.datasets["mpciROIs.mpciROITypes.npy"],
                         self.datasets["mpciROIs.cellClassifier.npy"],
                         self.datasets["mpciROIs.masks.sparse_npz"],
                         self.datasets["mpciROIs.stackPos.npy"],
