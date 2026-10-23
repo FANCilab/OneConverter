@@ -467,9 +467,13 @@ class MpciExporter(Exporter):
         if not planes:
             raise FileNotFoundError(f"No planeX folders found in {self.run_path}")
 
+        # FOVs are keyed by the Suite2p folder number (planeN -> FOV_NN), as in
+        # IBL's mesoscope pipeline.  ops["iroi"] is not used because it repeats
+        # across z-planes of the same ROI.  combined/stat["iplane"] uses the
+        # same folder number.
         fovs = {}
         required_plane_files = ("F.npy", "Fneu.npy", "spks.npy", "stat.npy", "ops.npy")
-        for fallback_fov, (plane_index, plane_path) in enumerate(planes):
+        for plane_index, plane_path in planes:
             missing = [
                 filename
                 for filename in required_plane_files
@@ -478,8 +482,7 @@ class MpciExporter(Exporter):
             if missing:
                 raise FileNotFoundError(f"Missing files in {plane_path}: {missing}")
             ops = np.load(plane_path / "ops.npy", allow_pickle=True).item()
-            fov_index = int(ops.get("iroi", fallback_fov))
-            fovs[fov_index] = {
+            fovs[plane_index] = {
                 "plane_index": plane_index,
                 "path": plane_path,
                 "height": int(ops["Ly"]),
@@ -547,6 +550,7 @@ class MpciExporter(Exporter):
             cycle_widths = np.append(cycle_widths, np.median(cycle_widths[-100:]))
             timing_bad[-1] = True
 
+        # Line offsets accumulate in plane folder order, which is FOV key order.
         heights = [fovs[index]["height"] for index in sorted(fovs)]
         total_height = sum(heights)
         height_before = 0
