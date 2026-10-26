@@ -236,6 +236,9 @@ class MpciExporter(Exporter):
         # The first discovered batch is selected by default.  A user-provided
         # relative Path is preserved by later get_collections() calls.
         "selected_batch": None,
+        # When True, each FOV is timed at the midpoint of its share of the DI3
+        # onset-to-offset window instead of at the start of that share.
+        "mid_frame_times": False,
     }
     datasets = {
         "mpci.times.npy": IBLDataset(
@@ -513,7 +516,11 @@ class MpciExporter(Exporter):
         return fovs
 
     def _prepare_fov_timing(self) -> int:
-        """Store corrected mROI times and timing-derived bad frames."""
+        """Store corrected mROI times and timing-derived bad frames.
+
+        Each FOV is timed at the start of its share of the DI3 window, or at
+        the midpoint of that share when the ``mid_frame_times`` setting is on.
+        """
         fovs = self.fovs
         timing_path = self.session_converter.raw_path / "timestamped_digital.csv"
         with timing_path.open(newline="") as stream:
@@ -557,7 +564,10 @@ class MpciExporter(Exporter):
         self.times_by_fov = {}
         self.timing_bad_frames_by_fov = {}
         for fov_index, height in zip(sorted(fovs), heights):
-            corrected = di3_times + cycle_widths * height_before / total_height
+            # The FOV's first line, or its middle line with mid_frame_times;
+            # for a single plane the latter is the DI3 onset/offset halfpoint.
+            line_position = height_before + height / 2 if self.mid_frame_times else height_before
+            corrected = di3_times + cycle_widths * line_position / total_height
             self.times_by_fov[fov_index] = (
                 corrected - self.session_converter.session_time_zero
             )
