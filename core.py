@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Iterator
 
 from one.alf import spec
+from one.alf.cache import make_parquet_db
 from one.alf.path import PureALFPath
 
 
@@ -157,7 +158,15 @@ class OneSessionConverter:
         If the session output directory already contains files, nothing is
         written and an empty list is returned.  Pass ``force_export=True`` to
         export again and overwrite the existing datasets.
+
+        Every call ends by rebuilding the ONE cache tables (``sessions.pqt``
+        and ``datasets.pqt``) in ``one_root`` with
+        ``one.alf.cache.make_parquet_db``, so ``ONE(cache_dir=one_root)``
+        always indexes the current contents.  This happens even when the
+        session was already exported.
         """
+        exported_paths: list[Path] = []
+
         # A session counts as already exported when any file exists below its
         # output root; individual datasets are not checked.
         if not force_export and self.session_path.is_dir() and any(
@@ -167,25 +176,26 @@ class OneSessionConverter:
                 f"{self.session_path} is already exported; "
                 "use export(force_export=True) to export again."
             )
-            return []
+        else:
+            exporter_collections = [
+                (exporter, exporter.get_collections()) for exporter in self.exporters
+            ]
+            self.collections = [
+                collection
+                for exporter, collections in exporter_collections
+                for collection in collections
+            ]
 
-        exported_paths: list[Path] = []
+            for exporter, collections in exporter_collections:
+                for collection in collections:
+                    for relative_output_path, dataset in collection.walk():
+                        output_path = self.session_path / relative_output_path
+                        output_path.parent.mkdir(parents=True, exist_ok=True)
+                        exported_paths.append(dataset.export(exporter, output_path))
 
-        exporter_collections = [
-            (exporter, exporter.get_collections()) for exporter in self.exporters
-        ]
-        self.collections = [
-            collection
-            for exporter, collections in exporter_collections
-            for collection in collections
-        ]
-
-        for exporter, collections in exporter_collections:
-            for collection in collections:
-                for relative_output_path, dataset in collection.walk():
-                    output_path = self.session_path / relative_output_path
-                    output_path.parent.mkdir(parents=True, exist_ok=True)
-                    exported_paths.append(dataset.export(exporter, output_path))
+        # Re-index the whole ONE root on every call, including when the
+        # session was already exported, so the parquet cache is never stale.
+        make_parquet_db(self.one_root)
 
         return exported_paths
 
