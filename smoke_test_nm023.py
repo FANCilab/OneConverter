@@ -44,9 +44,9 @@ print(datasets)
 print(collections)
 
 # Show documentation for a dataset from each exporter.
-explain_dataset("alf/FOV_00/mpci.times.npy")
-explain_dataset("alf/_ibl_sparseNoise.times.npy")
-explain_dataset("alf/_ibl_wheel.position.npy")
+explain_dataset(one, "alf/FOV_00/mpci.times.npy")
+explain_dataset(one, "alf/_ibl_sparseNoise.times.npy")
+explain_dataset(one, "alf/_ibl_wheel.position.npy")
 
 # Load each exporter's data through ONE's dataset and object interfaces.
 mpci_times = one.load_dataset(eid, "alf/FOV_00/mpci.times.npy")

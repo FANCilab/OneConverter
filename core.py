@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import os
 from datetime import date as Date
 from pathlib import Path
 from dataclasses import dataclass, field
@@ -8,6 +10,11 @@ from typing import Callable, Iterator
 from one.alf import spec
 from one.alf.cache import make_parquet_db
 from one.alf.path import PureALFPath
+
+# Dataset descriptions live in this file at the top of the ONE root, next to
+# ONE's sessions.pqt and datasets.pqt.  ONE ignores it: it is outside every
+# session folder and is not a .pqt table.
+DATASET_TYPES_FILENAME = "dataset_types.json"
 
 
 @dataclass
@@ -164,6 +171,10 @@ class OneSessionConverter:
         ``one.alf.cache.make_parquet_db``, so ``ONE(cache_dir=one_root)``
         always indexes the current contents.  This happens even when the
         session was already exported.
+
+        Every call also writes the documentation of all converter dataset
+        types into ``one_root/dataset_types.json`` (see
+        ``update_dataset_types``), where ``explain_dataset`` reads it.
         """
         exported_paths: list[Path] = []
 
@@ -197,34 +208,71 @@ class OneSessionConverter:
         # session was already exported, so the parquet cache is never stale.
         make_parquet_db(self.one_root)
 
+        # Import lazily to avoid a circular import, as in get_exporters().
+        from .exporters import REGISTERED_EXPORTERS
+
+        # Publish the documentation of every dataset type the converter knows,
+        # not only this session's, so docstring edits reach the JSON file on
+        # the next export() call of any session.
+        update_dataset_types(self.one_root, {
+            dataset.filename: dataset.docstring
+            for exporter_class in REGISTERED_EXPORTERS
+            for dataset in exporter_class.datasets.values()
+        })
+
         return exported_paths
 
 
+def update_dataset_types(one_root: str | Path, descriptions: dict[str, str | None]) -> Path:
+    """Add or replace dataset descriptions in ``one_root/dataset_types.json``.
 
-def explain_dataset(dataset: str | Path) -> None:
-    """Print documentation for an ALF dataset filename or relative path."""
-    from .exporters import REGISTERED_EXPORTERS
+    ``descriptions`` maps ALF dataset filenames (namespace, object, attribute
+    and extension, without the collection), such as
+    ``"_ibl_wheel.position.npy"``, to their documentation.  Entries already in
+    the file are kept; entries with the same filename are replaced, like
+    ``dict.update``.  Both ``OneSessionConverter.export`` and scripts that
+    write their own datasets below ``one_root`` use this function, so
+    ``explain_dataset`` can document any of them.
 
+    Returns the path of the JSON file.
+    """
+    dataset_types_path = Path(one_root) / DATASET_TYPES_FILENAME
+
+    # Start from the existing entries so descriptions written by other
+    # scripts survive this update.
+    dataset_types = {}
+    if dataset_types_path.is_file():
+        dataset_types = json.loads(dataset_types_path.read_text(encoding="utf-8"))
+
+    # Each entry is an object so fields such as units can be added later
+    # without changing the file layout.
+    for filename, description in descriptions.items():
+        dataset_types[filename] = {"description": description}
+
+    # Write a temporary file and swap it in, so an interrupted write never
+    # leaves a truncated JSON file behind.
+    temporary_path = dataset_types_path.with_name(DATASET_TYPES_FILENAME + ".tmp")
+    temporary_path.write_text(
+        json.dumps(dataset_types, indent=1, sort_keys=True), encoding="utf-8"
+    )
+    os.replace(temporary_path, dataset_types_path)
+    return dataset_types_path
+
+
+def explain_dataset(one: object, dataset: str | Path) -> None:
+    """Print documentation for an ALF dataset filename or relative path.
+
+    The documentation is read from ``dataset_types.json`` in the cache
+    directory of ``one`` (the ``one_root`` the session was exported to), so
+    any dataset registered with ``update_dataset_types`` can be explained.
+    """
+    # Keep only the filename: the JSON file is keyed without collections.
     filename = str(dataset).strip().replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
-    matches = [
-        definition
-        for exporter_class in REGISTERED_EXPORTERS
-        for definition in exporter_class.datasets.values()
-        if definition.filename == filename
-    ]
 
-    if not matches:
+    dataset_types_path = Path(one.cache_dir) / DATASET_TYPES_FILENAME
+    dataset_types = json.loads(dataset_types_path.read_text(encoding="utf-8"))
+
+    if filename not in dataset_types:
         raise KeyError(f"Unknown dataset {filename!r}")
 
-    docstrings = {definition.docstring for definition in matches}
-    if len(docstrings) > 1:
-        exporter_names = ", ".join(
-            exporter_class.__name__
-            for exporter_class in REGISTERED_EXPORTERS
-            if any(definition.filename == filename for definition in exporter_class.datasets.values())
-        )
-        raise ValueError(
-            f"Ambiguous dataset {filename!r}: conflicting documentation in {exporter_names}"
-        )
-
-    print(matches[0].docstring or "No documentation available.")
+    print(dataset_types[filename]["description"] or "No documentation available.")

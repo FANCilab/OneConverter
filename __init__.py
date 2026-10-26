@@ -1,14 +1,18 @@
 """Transform local experimental acquisitions into IBL ALF datasets."""
 
 if __package__:
-    from .core import Collection, IBLDataset, OneSessionConverter, explain_dataset
+    from .core import (
+        Collection, IBLDataset, OneSessionConverter, explain_dataset, update_dataset_types,
+    )
     from . import exporters as _exporters
 else:
     # Pytest imports a repository-root __init__.py directly when the checkout
     # directory is not itself a valid Python identifier (for example, it has
     # hyphens). The editable package remains the canonical import path.
-    from alf_toolbox.core import Collection, IBLDataset, OneSessionConverter, explain_dataset
-    from alf_toolbox import exporters as _exporters
+    from OneConverter.core import (
+        Collection, IBLDataset, OneSessionConverter, explain_dataset, update_dataset_types,
+    )
+    from OneConverter import exporters as _exporters
 
 
 Exporter = _exporters.Exporter
@@ -24,5 +28,6 @@ __all__ = [
     "OneSessionConverter",
     "REGISTERED_EXPORTERS",
     "explain_dataset",
+    "update_dataset_types",
     *(exporter.__name__ for exporter in REGISTERED_EXPORTERS),
 ]
