@@ -7,7 +7,7 @@ Build a Python tool that transforms experimental acquisitions into the IBL stand
 ## Project map
 
 - `core.py`: primary class structure; `OneSessionConverter` is the main user-facing class. It produces IBL-standard formatted data; use the official `one` interface to discover and load the output rather than adding custom loading abstractions.
-- `ONE/`: read-only checkout of the official ONE repository; import its `one` package directly.
+- `../ONE/`: external dependency, a checkout of the official ONE repository (https://github.com/int-brain-lab/ONE) in the parent folder of this repository, installed with `pip install -e ../ONE`. Do not vendor it here; import its `one` package directly.
 - `IBL documentation/`: authoritative IBL standard documentation. The `.docx` defines terminology for docstrings. `Local Data Standards.pdf` describes the lab's preliminary NAS organization and is not part of the IBL standard.
 
 ## Coding conventions
