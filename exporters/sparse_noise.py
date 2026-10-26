@@ -28,9 +28,8 @@ Dimensions: [nFrames, nCols, nRows]
 Format: bin
 
 The source bytes are preserved unchanged. They are int8 in C order with shape
-[nFrames, nCols, nRows] (frame-major); the default grid is 7 rows x 27 columns.
-Values are -128 for gray, -1 for black and 0 for white. The public IBL
-dataset-types document specifies a 15 x 15 uint8 grid instead.
+[nFrames, nCols, nRows] (frame-major). Each value marks a square as gray
+(background), black or white.
 """
 
 SPARSE_NOISE_XY_DOC = """Screen x/y coordinates of each non-gray sparse-noise stimulus square.
@@ -78,8 +77,9 @@ def load_sparse_noise_movie(exporter: SparseNoiseExporter) -> tuple[np.ndarray, 
     """Return the decoded `[frame, row, col]` movie and its absolute frame times.
 
     `SparseNoise_Log.bin` is frame-major int8 in C order with shape
-    `(n_frames, n_columns, n_rows)`. Byte values are decoded as -128 -> 0
-    (gray), -1 -> -1 (black) and 0 -> +1 (white).
+    `(n_frames, n_columns, n_rows)`. The exporter's `stimulus_values` setting
+    gives the byte value of each color; they are decoded as gray -> 0,
+    black -> -1 and white -> +1.
     """
     converter = exporter.session_converter
     frame_times = np.ravel(
@@ -108,14 +108,19 @@ def load_sparse_noise_movie(exporter: SparseNoiseExporter) -> tuple[np.ndarray, 
         )
     # Reorder the stored [frame, col, row] layout to [frame, row, col].
     movie = raw.reshape(n_frames, n_columns, n_rows).transpose(0, 2, 1)
-    unexpected = np.setdiff1d(np.unique(movie), (-128, -1, 0))
+
+    # Only the byte values configured for gray, black and white may appear.
+    stimulus_values = exporter.stimulus_values
+    unexpected = np.setdiff1d(np.unique(movie), list(stimulus_values.values()))
     if unexpected.size:
+        allowed = ", ".join(f"{value} ({color})" for color, value in stimulus_values.items())
         raise ValueError(
             f"SparseNoise_Log.bin contains unexpected values {unexpected.tolist()}; "
-            "only -128, -1 and 0 are allowed"
+            f"only {allowed} are allowed"
         )
+    # Decode black to -1 and white to +1; the remaining gray squares become 0.
     movie = np.select(
-        (movie == -1, movie == 0),
+        (movie == stimulus_values["black"], movie == stimulus_values["white"]),
         (-1, 1),
         default=0,
     )
@@ -158,6 +163,8 @@ def export_sparse_noise_times(exporter: SparseNoiseExporter, output_path: Path) 
 class SparseNoiseExporter(Exporter):
     settings = {
         "sparse_noise_shape": (7, 27),
+        # Byte value of each square color in SparseNoise_Log.bin.
+        "stimulus_values": {"gray": -128, "black": -1, "white": 0},
         "stimulus_edges_deg": (-135.0, 135.0, -40.0, 40.0),
     }
     datasets = {
