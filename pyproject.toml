@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "OneConverter"
+version = "0.1.0"
+description = "Transform experimental acquisitions into IBL ALF datasets"
+requires-python = ">=3.10"
+# ONE-api is installed separately from ../ONE (see README).
+dependencies = ["numpy>=1.24", "ONE-api", "sparse>=0.18"]
+
+[tool.setuptools]
+packages = ["OneConverter", "OneConverter.exporters"]
+package-dir = { OneConverter = "." }
