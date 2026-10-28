@@ -10,23 +10,21 @@ from ..core import Collection, IBLDataset
 from .base import Exporter
 
 
-WHEEL_POSITION_DOC = """Absolute unwrapped angle of the wheel from session start. The sign from the subject perspective corresponds to mathematical convention: counter clockwise is positive.
-
-Dataset: _ibl_wheel.position.npy
+WHEEL_POSITION_DOC = """Dataset: _ibl_wheel.position.npy
 Units: radians
 Type: float64
 Dimensions: [number of wheel ticks]
-Format: npy"""
+Format: npy
+Description: Absolute unwrapped angle of the wheel from session start. The sign from the subject perspective corresponds to mathematical convention: counter clockwise is positive."""
 
-WHEEL_TIMESTAMPS_DOC = """Time in seconds of the corresponding wheel event, relative to session start. Note that the wheel delivers a sample only when crossing a tick, which makes this time-serie very irregular.
-
-Dataset: _ibl_wheel.timestamps.npy
+WHEEL_TIMESTAMPS_DOC = """Dataset: _ibl_wheel.timestamps.npy
 Units: seconds relative to session start
 Type: float64
 Dimensions: [number of wheel ticks]
-Format: npy"""
+Format: npy
+Description: Time in seconds of the corresponding wheel event, relative to session start. Note that the wheel delivers a sample only when crossing a tick, which makes this time-serie very irregular."""
 
-WHEEL_VELOCITY_DOC = "Docstring placeholder for _ibl_wheel.velocity dataset"
+WHEEL_VELOCITY_DOC = "Description: Docstring placeholder for _ibl_wheel.velocity dataset"
 
 
 def _wheel_events(exporter: WheelExporter) -> tuple[np.ndarray, np.ndarray]:

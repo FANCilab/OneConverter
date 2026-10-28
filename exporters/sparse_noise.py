@@ -10,45 +10,40 @@ import numpy as np
 from ..core import Collection, IBLDataset
 from .base import Exporter
 
-PASSIVE_RFM_TIMES_DOC = """Interpolated presentation time for every frame in the receptive-field mapping period.
-
-Dataset: _ibl_passiveRFM.times.npy
+PASSIVE_RFM_TIMES_DOC = """Dataset: _ibl_passiveRFM.times.npy
 Units: seconds relative to session start
 Type: float64
 Dimensions: [nFrames]
 Format: npy
+Description: Interpolated presentation time for every frame in the receptive-field mapping period.
 """
 
-RF_MAP_STIM_RAW_DOC = """Raw receptive-field mapping stimulus matrix.
-
-Dataset: _iblrig_RFMapStim.raw.bin
+RF_MAP_STIM_RAW_DOC = """Dataset: _iblrig_RFMapStim.raw.bin
 Units: color
 Type: int8
 Dimensions: [nFrames, nCols, nRows]
 Format: bin
-
+Description: Raw receptive-field mapping stimulus matrix.
 The source bytes are preserved unchanged. They are int8 in C order with shape
 [nFrames, nCols, nRows] (frame-major). Each value marks a square as gray
 (background), black or white.
 """
 
-SPARSE_NOISE_XY_DOC = """Screen x/y coordinates of each non-gray sparse-noise stimulus square.
-
-Dataset: _ibl_sparseNoise.xy.npy
+SPARSE_NOISE_XY_DOC = """Dataset: _ibl_sparseNoise.xy.npy
 Units: the public dataset-types spreadsheet leaves the unit unresolved; this
 exporter follows the previous implementation and writes visual degrees
 Type: float64
 Dimensions: [nSparseNoise, 2]
 Format: npy
+Description: Screen x/y coordinates of each non-gray sparse-noise stimulus square.
 """
 
-SPARSE_NOISE_TIMES_DOC = """Presentation time of each non-gray sparse-noise stimulus square.
-
-Dataset: _ibl_sparseNoise.times.npy
+SPARSE_NOISE_TIMES_DOC = """Dataset: _ibl_sparseNoise.times.npy
 Units: seconds relative to session start
 Type: float64
 Dimensions: [nSparseNoise]
 Format: npy
+Description: Presentation time of each non-gray sparse-noise stimulus square.
 """
 
 

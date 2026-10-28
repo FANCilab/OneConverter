@@ -13,82 +13,72 @@ from ..core import Collection, IBLDataset
 from .base import Exporter
 
 
-MPCI_TIMES_DOC = """The time of each frame. Note that there may be further offsets available for each scanline or pixel/voxel in the mpciStack.timeshift.npy dataset.
-
-Dataset: mpci.times.npy
+MPCI_TIMES_DOC = """Dataset: mpci.times.npy
 Units: seconds relative to session start
 Type: float64
 Dimensions: [nframes]
-Format: npy"""
+Format: npy
+Description: The time of each frame. Note that there may be further offsets available for each scanline or pixel/voxel in the mpciStack.timeshift.npy dataset."""
 
-MPCI_BAD_FRAMES_DOC = """Bad frames as identified by processing software. Typically these are frames where the image registration was considered poor.
-
-Dataset: mpci.badFrames.npy
+MPCI_BAD_FRAMES_DOC = """Dataset: mpci.badFrames.npy
 Units: N/A
 Type: boolean
 Dimensions: [nframes]
-Format: npy"""
+Format: npy
+Description: Bad frames as identified by processing software. Typically these are frames where the image registration was considered poor."""
 
-MPCI_ROI_ACTIVITY_F_DOC = """Mean activity of all pixels in each ROI.
-
-Dataset: mpci.ROIActivityF.npy
+MPCI_ROI_ACTIVITY_F_DOC = """Dataset: mpci.ROIActivityF.npy
 Units: photodetector output units
 Type: float32
 Dimensions: [nFrames, nROIs]
-Format: npy"""
+Format: npy
+Description: Mean activity of all pixels in each ROI."""
 
-MPCI_ROI_NEUROPIL_ACTIVITY_F_DOC = """Mean activity neuropil pixels neighboring each ROI.
-
-Dataset: mpci.ROINeuropilActivityF.npy
+MPCI_ROI_NEUROPIL_ACTIVITY_F_DOC = """Dataset: mpci.ROINeuropilActivityF.npy
 Units: photodetector output units
 Type: float32
 Dimensions: [nFrames, nROIs]
-Format: npy"""
+Format: npy
+Description: Mean activity neuropil pixels neighboring each ROI."""
 
-MPCI_ROI_ACTIVITY_DECONVOLVED_DOC = """Neuropil-subtracted deconvolved activity of each ROI using standard parameters, which can be recovered from _suite2p_ROIData.raw.
-
-Dataset: mpci.ROIActivityDeconvolved.npy
+MPCI_ROI_ACTIVITY_DECONVOLVED_DOC = """Dataset: mpci.ROIActivityDeconvolved.npy
 Units: AU
 Type: float32
 Dimensions: [nFrames, nROIs]
-Format: npy"""
+Format: npy
+Description: Neuropil-subtracted deconvolved activity of each ROI using standard parameters, which can be recovered from _suite2p_ROIData.raw."""
 
-MPCI_ROI_TYPES_DOC = """Numerical enumeration of ROI type for each ROI.
-
-Dataset: mpciROIs.mpciROITypes.npy
+MPCI_ROI_TYPES_DOC = """Dataset: mpciROIs.mpciROITypes.npy
 Units: N/A
 Type: int16
 Dimensions: [nROIs]
 Format: npy
-
+Description: Numerical enumeration of ROI type for each ROI.
 Values are the Suite2p manual curation label (iscell[:, 0]): 0 = nonCell,
 1 = neuron."""
 
-MPCI_CELL_CLASSIFIER_DOC = """Floating-point cell classifier score for each ROI, ranging between 0 and 1.
-
-Dataset: mpciROIs.cellClassifier.npy
+MPCI_CELL_CLASSIFIER_DOC = """Dataset: mpciROIs.cellClassifier.npy
 Units: N/A
 Type: float64
 Dimensions: [nROIs]
-Format: npy"""
+Format: npy
+Description: Floating-point cell classifier score for each ROI, ranging between 0 and 1."""
 
-MPCI_ROI_MASKS_DOC = """Floating-point mask of each ROI, in 2D or 3D according to how you did detection. Saved as a sparse array. sum(roi_mask * frames[ypix,xpix,:]) = fluorescence
-
-Dataset: mpciROIs.masks.sparse_npz
+MPCI_ROI_MASKS_DOC = """Dataset: mpciROIs.masks.sparse_npz
 Units: AU
 Type: float
 Dimensions: [nROIs, H, W]
-Format: sparse_npz"""
+Format: sparse_npz
+Description: Floating-point mask of each ROI, in 2D or 3D according to how you did detection. Saved as a sparse array. sum(roi_mask * frames[ypix,xpix,:]) = fluorescence"""
 
-MPCI_STACK_POS_DOC = """Y, X, and Z (plane) pixel coordinates of each ROI's centroid.
-
-Dataset: mpciROIs.stackPos.npy
+MPCI_STACK_POS_DOC = """Dataset: mpciROIs.stackPos.npy
 Units: pixels
 Type: int64
 Dimensions: [nROIs, 3]
-Format: npy"""
+Format: npy
+Description: Y, X, and Z (plane) pixel coordinates of each ROI's centroid."""
 
-MPCI_MEAN_IMAGE_DOC = "Docstring placeholder for mpciMeanImage.images dataset"
+MPCI_MEAN_IMAGE_DOC = "Description: Docstring placeholder for mpciMeanImage.images dataset"
 
 
 def _fov_index(output_path: Path) -> int:
