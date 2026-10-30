@@ -389,7 +389,6 @@ class MpciExporter(Exporter):
             data_paths = [data_paths]
 
         session_keys = []
-        raw_session_paths = []
         # Suite2p concatenates trace frames in db.npy data_path order, so the
         # same order defines the frame offsets for the selected session.
         for data_path in data_paths:
@@ -406,39 +405,39 @@ class MpciExporter(Exporter):
                     int(session_number),
                 )
             )
-            raw_session_paths.append(
-                session_converter.raw_data_root
-                / modality
-                / subject
-                / date.replace("-", "")
-                / str(int(session_number))
-            )
         if session_keys.count(current_session_key) != 1:
             raise ValueError(
                 f"Current session {current_session_key} must occur exactly once in db data_path: "
                 f"{session_keys}"
             )
 
+        # Every plane of a run holds the same frames, so the first plane's
+        # ops.npy gives the frame counts of the whole run.
+        plane_path = min(
+            path
+            for path in run_path.iterdir()
+            if path.is_dir() and re.fullmatch(r"plane\d+", path.name, re.IGNORECASE)
+        )
+        ops = np.load(plane_path / "ops.npy", allow_pickle=True).item()
+
+        # Suite2p stores the frames read from each tiff in frames_per_file,
+        # aligned with file_list.  A session's frame count is the sum over the
+        # tiffs inside its data_path folder.
         session_frame_counts = []
-        # Count DI3 imaging frames for every raw session in the batch.  The
-        # label interpretation mirrors _prepare_fov_timing().
-        for raw_session_path in raw_session_paths:
-            timing_path = raw_session_path / "timestamped_digital.csv"
-            with timing_path.open(newline="") as stream:
-                rows = list(csv.reader(stream))
-            use_third_column = not any(
-                len(row) > 1 and row[1].strip() == "DI3" for row in rows
-            )
+        for data_path in data_paths:
             frame_count = 0
-            for row in rows:
-                label = (
-                    row[2].strip()
-                    if use_third_column and len(row) > 2
-                    else "" if use_third_column else row[1].strip()
-                )
-                if label == "DI3":
-                    frame_count += 1
+            for file_path, file_frame_count in zip(ops["file_list"], ops["frames_per_file"]):
+                if Path(file_path).parent == Path(data_path):
+                    frame_count += int(file_frame_count)
             session_frame_counts.append(frame_count)
+
+        # Frames from a tiff outside every data_path folder would shift the
+        # offsets of later sessions.
+        if sum(session_frame_counts) != int(ops["nframes"]):
+            raise ValueError(
+                f"Suite2p frame counts {session_frame_counts} of {data_paths} add up to "
+                f"{sum(session_frame_counts)}, but {plane_path} has {int(ops['nframes'])} frames"
+            )
 
         current_session_index = session_keys.index(current_session_key)
         self.run_path = run_path
@@ -446,7 +445,7 @@ class MpciExporter(Exporter):
         self.frame_stop = (
             self.frame_start + session_frame_counts[current_session_index]
         )
-        self.total_frame_count = sum(session_frame_counts)
+        self.total_frame_count = int(ops["nframes"])
         return True
 
     def _handle_planes(self) -> dict[int, dict]:
@@ -579,7 +578,7 @@ class MpciExporter(Exporter):
         if session_frame_count != expected_frame_count:
             raise ValueError(
                 f"Current session timing contains {session_frame_count} DI3 frames, but "
-                f"the selected batch count is {expected_frame_count}"
+                f"the selected Suite2p run has {expected_frame_count} frames for it"
             )
 
         alf = Collection("alf")
